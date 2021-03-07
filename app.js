@@ -31,13 +31,13 @@ mongoose.connect("mongodb://localhost:27017/UserDB", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   useFindAndModify: false,
-  useCreateIndex: true,
+  useCreateIndex: false,
 });
 
 const userSchema = new mongoose.Schema({
-  email: String,
+  username: String,
   password: String,
-  googleId:String,
+  googleId: String,
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -51,15 +51,15 @@ const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
 
-passport.serializeUser(function(user, done) {
-	done(null, user.id);
+passport.serializeUser(function (user, done) {
+  done(null, user);
+});
+
+passport.deserializeUser(function (id, done) {
+  User.findById(id, function (err, user) {
+    done(err, user);
   });
-  
-  passport.deserializeUser(function(id, done) {
-	User.findById(id, function(err, user) {
-	  done(err, user);
-	});
-  });
+});
 
 passport.use(
   new GoogleStrategy(
@@ -70,8 +70,8 @@ passport.use(
       userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
     },
     function (accessToken, refreshToken, profile, cb) {
-		console.log(accessToken,refreshToken,profile)
-      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+		// console.log(profile.emails[0].value)
+    const userData= User.findOrCreate({ username:profile.emails[0].value }, function (err, user) {
         return cb(err, user);
       });
     }
@@ -84,13 +84,15 @@ app.get("/", (req, res) => {
 
 app.get(
   "/auth/google",
-  passport.authenticate("google", { scope: ["profile","email"] })
+  passport.authenticate("google", { scope: ["profile", "email"] })
 );
 app.get(
   "/auth/google/secrets",
   passport.authenticate("google", { failureRedirect: "/login" }),
   function (req, res) {
     // Successful authentication, redirect home.
+    console.log(req.user)
+	
     res.redirect("/secrets");
   }
 );
