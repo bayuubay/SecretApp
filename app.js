@@ -9,6 +9,7 @@ const encrypt = require("mongoose-encryption");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const jwt = require("jsonwebtoken");
 
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const findOrCreate = require("mongoose-findorcreate");
@@ -36,6 +37,7 @@ mongoose.connect("mongodb://localhost:27017/UserDB", {
 
 const userSchema = new mongoose.Schema({
   username: String,
+  fullname: String,
   password: String,
   googleId: String,
 });
@@ -55,10 +57,8 @@ passport.serializeUser(function (user, done) {
   done(null, user);
 });
 
-passport.deserializeUser(function (id, done) {
-  User.findById(id, function (err, user) {
-    done(err, user);
-  });
+passport.deserializeUser(function (user, done) {
+  done(null, user);
 });
 
 passport.use(
@@ -70,10 +70,19 @@ passport.use(
       userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
     },
     function (accessToken, refreshToken, profile, cb) {
-		// console.log(profile.emails[0].value)
-    const userData= User.findOrCreate({ username:profile.emails[0].value }, function (err, user) {
-        return cb(err, user);
-      });
+      return cb(null, profile);
+      // console.log(profile.emails[0].value)
+      //   const userData = User.findOrCreate(
+      //     { username: profile.emails[0].value },
+      //     function (err, user) {
+      //       return cb(err, user);
+      //     }
+      //   );
+
+      // const userData= User.find({ username:profile.emails[0].value }, function (err, user) {
+      //     return cb(err, user);
+      //   });
+      //   console.log(userData);
     }
   )
 );
@@ -89,11 +98,28 @@ app.get(
 app.get(
   "/auth/google/secrets",
   passport.authenticate("google", { failureRedirect: "/login" }),
-  function (req, res) {
+  async (req, res) => {
     // Successful authentication, redirect home.
-    console.log(req.user)
-	
-    res.redirect("/secrets");
+	let token
+    const data = req.user;
+    const dataUser = await User.findOne({ googleId: data.id });
+    if (dataUser == null) {
+      const create = await User.create({
+        username: data.emails[0].value,
+        fullname: data.displayName,
+        googleId: data.id,
+      });
+      token = jwt.sign(create.toJSON(), "secrets");
+      console.log(create, "token: ", token);
+    } else {
+      token = jwt.sign(dataUser.toJSON(), "secrets");
+      console.log(dataUser, "token: ", token);
+    }
+    res.json({
+      message: "success login via google auth",
+      success: true,
+      token: token,
+    });
   }
 );
 
